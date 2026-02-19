@@ -5,8 +5,12 @@ namespace {
     Preferences prefs;
     const char *NVS_NAMESPACE = "mcl";
     const char *NVS_KEY_ID    = "devid";
+    const char *NVS_KEY_NAME  = "devname";
+    constexpr uint8_t MAX_NAME_LEN = 16;
     uint8_t cachedID = 0;
+    String  cachedName;
     bool loaded = false;
+    bool nameLoaded = false;
 }
 
 uint8_t deviceGetID() {
@@ -33,5 +37,28 @@ void deviceSetID(uint8_t id) {
     loaded = true;
     prefs.begin(NVS_NAMESPACE, false);
     prefs.putUChar(NVS_KEY_ID, id);
+    prefs.end();
+}
+
+String deviceGetName() {
+    if (!nameLoaded) {
+        prefs.begin(NVS_NAMESPACE, true);
+        if (prefs.isKey(NVS_KEY_NAME)) {
+            cachedName = prefs.getString(NVS_KEY_NAME, "");
+        }
+        prefs.end();
+        if (cachedName.length() == 0) {
+            cachedName = "Device " + String(deviceGetID(), HEX);
+        }
+        nameLoaded = true;
+    }
+    return cachedName;
+}
+
+void deviceSetName(const String &name) {
+    cachedName = name.substring(0, MAX_NAME_LEN);
+    nameLoaded = true;
+    prefs.begin(NVS_NAMESPACE, false);
+    prefs.putString(NVS_KEY_NAME, cachedName);
     prefs.end();
 }

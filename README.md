@@ -7,10 +7,10 @@ A battery-optimized, bidirectional morse code communicator built on the **Heltec
 | Component | Details |
 |---|---|
 | Board | [Heltec WiFi LoRa 32 V4](https://heltec.org/project/wifi-lora-32-v4/) — ESP32-S3, SX1262, SSD1306 128×64 OLED |
-| Dot button | GPIO 47, active LOW with internal pull-up |
-| Dash button | GPIO 48, active LOW with internal pull-up |
-| Send button | GPIO 26, active LOW with internal pull-up |
-| Vibration motor | GPIO 46, driven via MOSFET/transistor |
+| Dot button | GPIO 6, active LOW with internal pull-up |
+| Dash button | GPIO 7, active LOW with internal pull-up |
+| Send button | GPIO 5, active LOW with internal pull-up |
+| Vibration motor | GPIO 19, driven via MOSFET/transistor |
 
 Pin assignments are in [`src/config.h`](src/config.h).
 
@@ -61,6 +61,7 @@ src/
 ├── morseCodec.*         ITU morse encode/decode lookup table
 ├── packetProtocol.*     Packet framing: flags, addressing, sequence numbers
 ├── radioHandler.*       SX1262 radio driver (RadioLib wrapper)
+├── cryptoHandler.*      AES-128-CTR encryption/decryption via mbedtls
 ├── displayHandler.*     SSD1306 OLED multi-screen UI
 ├── vibrationHandler.*   Non-blocking vibration motor state machine
 ├── deviceIdentity.*     NVS-backed device ID
@@ -76,7 +77,7 @@ src/
 - **flags** — bit 0: ACK request, bit 1: is ACK, bit 2: broadcast
 - **srcID / dstID** — 1-byte device IDs (0xFF = broadcast)
 - **seqNum** — wrapping sequence number for ACK correlation
-- **payload** — null-separated decoded ASCII text and raw morse string
+- **payload** — AES-128-CTR encrypted: `[nonce:4][ciphertext:N]` (ACK packets have no payload)
 
 ## LoRa Parameters
 
@@ -102,6 +103,30 @@ pio run -t upload
 
 # Serial monitor (115200 baud)
 pio device monitor
+```
+
+## Device Setup
+
+After flashing, open the serial monitor and configure each device:
+
+```
+name:Alpha          # Set device name (max 16 chars, persists in NVS)
+id:2A               # Set device ID as hex 01-FE (persists in NVS)
+```
+
+These persist through power cycles and reflashes. If no name is set, it defaults to "Device XX" where XX is the hex ID.
+
+## Encryption
+
+Messages are encrypted with AES-128-CTR using a shared key compiled into the firmware. Only devices built from the same source can decode each other's messages. The packet header (addressing, flags) remains plaintext for routing.
+
+To create a private network, change `CRYPTO_KEY` in [`src/config.h`](src/config.h) and rebuild all devices:
+
+```cpp
+constexpr uint8_t CRYPTO_KEY[16] = {
+    0x4D, 0x79, 0x53, 0x65, 0x63, 0x72, 0x65, 0x74,  // change these
+    0x4B, 0x65, 0x79, 0x48, 0x65, 0x72, 0x65, 0x21    // 16 bytes total
+};
 ```
 
 ## Power States

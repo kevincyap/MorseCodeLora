@@ -28,7 +28,8 @@ All source files live in `src/`. There are no private libraries in `lib/`.
 | `inputHandler` | 3-button debounce + chord detection (50ms window, peak mask) |
 | `morseCodec` | ITU morse encode/decode (A-Z, 0-9, punctuation) |
 | `packetProtocol` | Serialize/deserialize framed packets with addressing |
-| `radioHandler` | SX1262 via RadioLib — init, TX, RX, ACK with critical sections |
+| `radioHandler` | SX1262 via RadioLib — init, TX, RX, ACK, duty cycle |
+| `cryptoHandler` | AES-128-CTR encrypt/decrypt using ESP32 hardware mbedtls |
 | `displayHandler` | SSD1306 OLED — idle, composing, sending, receiving screens |
 | `vibrationHandler` | Non-blocking state machine for buzz + morse pattern replay |
 | `deviceIdentity` | 1-byte device ID in ESP32 NVS (Preferences API) |
@@ -42,7 +43,7 @@ All source files live in `src/`. There are no private libraries in `lib/`.
 - The custom board variant is in `variants/heltec_V4/` with `pins_arduino.h` defining all Heltec-specific pin mappings.
 
 ## Hardware Pins (from config.h)
-- Buttons: GPIO 47 (dot), 48 (dash), 26 (send) — active LOW, internal pull-up
-- Vibration motor: GPIO 46
+- Buttons: GPIO 6 (dot), 7 (dash), 5 (send) — active LOW, internal pull-up
+- Vibration motor: GPIO 19
 - OLED: SDA=17, SCL=18, RST=21 (Vext-gated on GPIO 36)
 - Radio SPI: SS=8, SCK=9, MOSI=10, MISO=11, RST=12, BUSY=13, DIO0=14

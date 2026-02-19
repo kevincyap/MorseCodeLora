@@ -133,7 +133,8 @@ void setup() {
     powerSetup();
 
     localID = deviceGetID();
-    Serial.printf("Device ID: 0x%02X\n", localID);
+    Serial.printf("Device ID: 0x%02X  Name: %s\n", localID, deviceGetName().c_str());
+    Serial.println("Serial commands: name:<text>  id:<hex>");
 
     if (!radioInit()) {
         displayShowMessage("Radio FAIL");
@@ -256,4 +257,27 @@ void loop() {
     // ---- Power management ---------------------------------------------------
     bool activity = (evt != ButtonEvent::None) || rxPkt.text.length() > 0;
     powerUpdate(activity || composing);
+
+    // ---- Serial commands (name:<text> or id:<hex>) --------------------------
+    if (Serial.available()) {
+        String cmd = Serial.readStringUntil('\n');
+        cmd.trim();
+        if (cmd.startsWith("name:")) {
+            String newName = cmd.substring(5);
+            newName.trim();
+            deviceSetName(newName);
+            Serial.printf("Name set to: %s\n", deviceGetName().c_str());
+            displayIdle(deviceGetName(), "");
+        } else if (cmd.startsWith("id:")) {
+            uint8_t newID = (uint8_t)strtol(cmd.substring(3).c_str(), nullptr, 16);
+            if (newID > 0 && newID < 0xFF) {
+                deviceSetID(newID);
+                localID = newID;
+                Serial.printf("ID set to: 0x%02X\n", localID);
+                displayIdle("ID:" + String(localID, HEX) + " " + deviceGetName(), "");
+            } else {
+                Serial.println("Invalid ID (must be 01-FE)");
+            }
+        }
+    }
 }
