@@ -61,5 +61,14 @@ constexpr unsigned long DEEP_SLEEP_MS   = 120000;  // 2min idle → deep sleep
 constexpr uint32_t DUTY_CYCLE_RX_MS    = 15;    // listen window (aggressive)
 constexpr uint32_t DUTY_CYCLE_SLEEP_MS = 250;   // sleep window (< preamble - rx)
 
+// ---- Encryption -------------------------------------------------------------
+// AES-128-CTR with a compile-time shared key. Change this key and rebuild
+// to create a private network. All devices must use the same key.
+constexpr uint8_t CRYPTO_KEY[16] = {
+    0x4D, 0x6F, 0x72, 0x73, 0x65, 0x43, 0x6F, 0x64,  // "MorseCod"
+    0x65, 0x4C, 0x6F, 0x72, 0x61, 0x4B, 0x65, 0x79    // "eLoraKey"
+};
+constexpr uint8_t CRYPTO_NONCE_SIZE = 4;  // bytes prepended to ciphertext
+
 // ---- Message History --------------------------------------------------------
 constexpr uint8_t MESSAGE_HISTORY_SIZE = 10;
