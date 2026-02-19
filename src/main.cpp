@@ -141,7 +141,17 @@ void setup() {
         while (true) delay(1000);
     }
 
-    displayIdle("Ready  ID:" + String(localID, HEX), "");
+    WakeReason wake = powerWakeReason();
+    if (wake == WakeReason::Radio) {
+        // Woke from radio RX — check for buffered packet immediately
+        Serial.println("Woke from radio RX");
+        displayIdle("RX Wake  ID:" + String(localID, HEX), "");
+    } else if (wake == WakeReason::Button) {
+        Serial.println("Woke from button press");
+        displayIdle("Ready  ID:" + String(localID, HEX), "");
+    } else {
+        displayIdle("Ready  ID:" + String(localID, HEX), "");
+    }
 }
 
 void loop() {
@@ -208,30 +218,33 @@ void loop() {
     Packet rxPkt;
     int16_t rssi = 0;
     if (radioReceivePacket(rxPkt, rssi, localID)) {
-        if (rxPkt.isAck()) {
-            return;  // ACK handled inside radioTransmitPacket
+        if (!rxPkt.isAck()) {
+            // Send ACK if requested
+            if (rxPkt.isAckRequest()) {
+                Packet ack = packetMakeAck(rxPkt, localID);
+                radioTransmitPacket(ack);
+            }
+
+            // Track last sender as default target for addressed mode
+            if (rxPkt.srcID != BROADCAST_ADDR) {
+                targetID = rxPkt.srcID;
+            }
+
+            // Display and vibrate
+            displayReceiving(rxPkt.text, rssi);
+            addToHistory("RX: " + rxPkt.text);
+
+            if (rxPkt.morse.length() > 0) {
+                vibrationPlayMorse(rxPkt.morse);
+            } else {
+                vibrationNotify();
+            }
+
+            Serial.printf("RX [%02X->%02X]: \"%s\" RSSI=%d\n", rxPkt.srcID, rxPkt.dstID, rxPkt.text.c_str(), rssi);
         }
-
-        // Send ACK if requested
-        if (rxPkt.isAckRequest()) {
-            Packet ack = packetMakeAck(rxPkt, localID);
-            radioTransmitPacket(ack);
-        }
-
-        // Display and vibrate
-        displayReceiving(rxPkt.text, rssi);
-        addToHistory("RX: " + rxPkt.text);
-
-        if (rxPkt.morse.length() > 0) {
-            vibrationPlayMorse(rxPkt.morse);
-        } else {
-            vibrationNotify();
-        }
-
-        Serial.printf("RX [%02X→%02X]: \"%s\" RSSI=%d\n", rxPkt.srcID, rxPkt.dstID, rxPkt.text.c_str(), rssi);
     }
 
     // ---- Power management ---------------------------------------------------
     bool activity = (evt != ButtonEvent::None) || rxPkt.text.length() > 0;
-    powerUpdate(activity);
+    powerUpdate(activity || composing);
 }

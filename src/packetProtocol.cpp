@@ -4,9 +4,9 @@
 static constexpr uint8_t HEADER_SIZE = 4;  // flags + srcID + dstID + seqNum
 
 uint8_t packetSerialize(const Packet &pkt, uint8_t *buf, uint8_t bufSize) {
-    // Header (4 bytes) + text + '\0' + morse + '\0'
-    uint8_t needed = HEADER_SIZE + pkt.text.length() + 1 + pkt.morse.length() + 1;
-    if (needed > bufSize) {
+    // Use uint16_t to avoid overflow in size calculation
+    uint16_t needed = HEADER_SIZE + pkt.text.length() + 1 + pkt.morse.length() + 1;
+    if (needed > bufSize || needed > 255) {
         return 0;
     }
 

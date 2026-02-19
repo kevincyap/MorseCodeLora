@@ -4,18 +4,22 @@
 
 namespace {
 	volatile bool receivedFlag = false;
-	volatile bool transmitting = false;
+	bool transmitting = false;
 	volatile bool enableInterrupt = true;
 
 	int16_t lastRssi = 0;
 
 	SX1262 radio = new Module(SS, DIO0, RST_LoRa, BUSY_LoRa);
 
+	portMUX_TYPE radioMux = portMUX_INITIALIZER_UNLOCKED;
+
 	void setFlag() {
 		if (!enableInterrupt) {
 			return;
 		}
+		portENTER_CRITICAL_ISR(&radioMux);
 		receivedFlag = true;
+		portEXIT_CRITICAL_ISR(&radioMux);
 	}
 
 	// Transmit raw bytes (internal helper).
@@ -68,12 +72,16 @@ bool radioStartReceive() {
 }
 
 bool radioReceivePacket(Packet &outPkt, int16_t &outRssi, uint8_t localID) {
-	if (!receivedFlag) {
+	portENTER_CRITICAL(&radioMux);
+	bool hadFlag = receivedFlag;
+	receivedFlag = false;
+	portEXIT_CRITICAL(&radioMux);
+
+	if (!hadFlag) {
 		return false;
 	}
 
 	enableInterrupt = false;
-	receivedFlag = false;
 
 	uint8_t buf[256];
 	size_t len = radio.getPacketLength();
@@ -149,4 +157,25 @@ bool radioIdle() {
 
 int16_t radioLastRssi() {
 	return lastRssi;
+}
+
+bool radioStartDutyCycle() {
+	enableInterrupt = true;
+
+#if DUTY_CYCLE_RX_MS > 0 && DUTY_CYCLE_SLEEP_MS > 0
+	// Manual tuning: use config.h values (microseconds to RadioLib)
+	int state = radio.startReceiveDutyCycle(
+		DUTY_CYCLE_RX_MS * 1000UL,
+		DUTY_CYCLE_SLEEP_MS * 1000UL
+	);
+#else
+	// Auto mode: RadioLib calculates optimal windows from preamble config
+	int state = radio.startReceiveDutyCycleAuto(LORA_PREAMBLE_LENGTH, 8);
+#endif
+
+	if (state != RADIOLIB_ERR_NONE) {
+		Serial.printf("Radio duty cycle failed, code %d\n", state);
+		return false;
+	}
+	return true;
 }

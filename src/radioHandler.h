@@ -27,3 +27,8 @@ bool radioIdle();
 
 // Returns RSSI of last received packet.
 int16_t radioLastRssi();
+
+// Put the radio into RX duty cycle mode (low-power periodic listen).
+// The SX1262 autonomously wakes, checks for preamble, and sleeps.
+// DIO1 fires when a packet is received.
+bool radioStartDutyCycle();

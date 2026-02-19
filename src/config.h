@@ -53,5 +53,13 @@ constexpr unsigned long VIB_CHAR_GAP_MS    = 200;  // gap between characters
 constexpr unsigned long DISPLAY_DIM_MS  = 30000;   // 30s idle → dim
 constexpr unsigned long DEEP_SLEEP_MS   = 120000;  // 2min idle → deep sleep
 
+// ---- Radio Duty Cycle (tune with hardware testing) --------------------------
+// SX1262 RX duty cycle: radio wakes, listens for preamble, sleeps if none.
+// rxPeriod must catch at least one preamble symbol (~32ms at SF12/125kHz).
+// sleepPeriod must be shorter than total preamble duration (~390ms for 12 symbols).
+// Set both to 0 to use RadioLib's auto-calculated optimal windows instead.
+constexpr uint32_t DUTY_CYCLE_RX_MS    = 15;    // listen window (aggressive)
+constexpr uint32_t DUTY_CYCLE_SLEEP_MS = 250;   // sleep window (< preamble - rx)
+
 // ---- Message History --------------------------------------------------------
 constexpr uint8_t MESSAGE_HISTORY_SIZE = 10;

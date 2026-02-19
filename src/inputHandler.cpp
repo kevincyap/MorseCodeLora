@@ -78,16 +78,16 @@ ButtonEvent inputUpdate() {
     // If a new button was just pressed, start/extend the chord window
     if (anyNewPress) {
         if (activeMask == 0) {
-            firstPressMs = millis();
             chordEmitted = false;
         }
         activeMask = heldMask;
+        firstPressMs = millis();  // restart window on every new press
     }
 
     // While within chord window, wait for more buttons
     if (activeMask != 0 && !chordEmitted) {
         if ((millis() - firstPressMs) < CHORD_WINDOW_MS) {
-            activeMask = heldMask;  // accumulate
+            activeMask |= heldMask;  // accumulate peak — don't lose released buttons
             return ButtonEvent::None;  // still waiting
         }
 

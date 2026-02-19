@@ -8,7 +8,7 @@ struct MorseEntry {
 };
 
 // ITU morse code table
-const MorseEntry MORSE_TABLE[] PROGMEM = {
+const MorseEntry MORSE_TABLE[] = {
     // Letters
     { 'A', ".-" },
     { 'B', "-..." },
