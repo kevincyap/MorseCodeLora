@@ -66,7 +66,6 @@ static void sendMessage() {
     pkt.seqNum = seqNum++;
     pkt.flags  = broadcastMode ? PACKET_FLAG_BROADCAST : PACKET_FLAG_ACK_REQ;
     pkt.text   = decodedText;
-    pkt.morse  = fullMorseString;
 
     displaySending("Sending...");
     TransmitStatus status = radioTransmitPacket(pkt, !broadcastMode, localID);
@@ -234,8 +233,18 @@ void loop() {
             displayReceiving(rxPkt.text, rssi);
             addToHistory("RX: " + rxPkt.text);
 
-            if (rxPkt.morse.length() > 0) {
-                vibrationPlayMorse(rxPkt.morse);
+            // Regenerate morse from ASCII for vibration replay
+            String morsePattern;
+            for (size_t i = 0; i < rxPkt.text.length(); ++i) {
+                String m = charToMorse(rxPkt.text[i]);
+                if (m.length() > 0) {
+                    if (morsePattern.length() > 0) morsePattern += ' ';
+                    morsePattern += m;
+                }
+            }
+
+            if (morsePattern.length() > 0) {
+                vibrationPlayMorse(morsePattern);
             } else {
                 vibrationNotify();
             }

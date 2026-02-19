@@ -5,7 +5,7 @@ static constexpr uint8_t HEADER_SIZE = 4;  // flags + srcID + dstID + seqNum
 
 uint8_t packetSerialize(const Packet &pkt, uint8_t *buf, uint8_t bufSize) {
     // Use uint16_t to avoid overflow in size calculation
-    uint16_t needed = HEADER_SIZE + pkt.text.length() + 1 + pkt.morse.length() + 1;
+    uint16_t needed = HEADER_SIZE + pkt.text.length() + 1;
     if (needed > bufSize || needed > 255) {
         return 0;
     }
@@ -19,14 +19,11 @@ uint8_t packetSerialize(const Packet &pkt, uint8_t *buf, uint8_t bufSize) {
     memcpy(&buf[pos], pkt.text.c_str(), pkt.text.length() + 1);
     pos += pkt.text.length() + 1;
 
-    memcpy(&buf[pos], pkt.morse.c_str(), pkt.morse.length() + 1);
-    pos += pkt.morse.length() + 1;
-
     return pos;
 }
 
 bool packetDeserialize(const uint8_t *buf, uint8_t len, Packet &outPkt) {
-    if (len < HEADER_SIZE + 2) {  // at least header + two null terminators
+    if (len < HEADER_SIZE + 1) {  // at least header + one null terminator
         return false;
     }
 
@@ -35,7 +32,6 @@ bool packetDeserialize(const uint8_t *buf, uint8_t len, Packet &outPkt) {
     outPkt.dstID  = buf[2];
     outPkt.seqNum = buf[3];
 
-    // Find first null terminator (end of text)
     const char *textStart = reinterpret_cast<const char *>(&buf[HEADER_SIZE]);
     const char *bufEnd    = reinterpret_cast<const char *>(&buf[len]);
 
@@ -44,17 +40,6 @@ bool packetDeserialize(const uint8_t *buf, uint8_t len, Packet &outPkt) {
         return false;
     }
     outPkt.text = String(textStart);
-
-    // Morse string follows the first null
-    const char *morseStart = textEnd + 1;
-    if (morseStart >= bufEnd) {
-        return false;
-    }
-    const char *morseEnd = static_cast<const char *>(memchr(morseStart, '\0', bufEnd - morseStart));
-    if (!morseEnd) {
-        return false;
-    }
-    outPkt.morse = String(morseStart);
 
     return true;
 }

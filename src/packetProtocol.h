@@ -7,7 +7,7 @@
 // Packet Protocol for MorseCodeLora
 //
 // Wire format:
-//   [flags:1] [srcID:1] [dstID:1] [seqNum:1] [textPayload\0morsePayload\0]
+//   [flags:1] [srcID:1] [dstID:1] [seqNum:1] [textPayload\0]
 //
 // RadioLib handles radio-level CRC.
 // =============================================================================
@@ -18,7 +18,6 @@ struct Packet {
     uint8_t dstID   = BROADCAST_ADDR;
     uint8_t seqNum  = 0;
     String  text;           // decoded ASCII message
-    String  morse;          // raw dot/dash string (chars separated by ' ', words by '/')
 
     bool isAckRequest() const  { return flags & PACKET_FLAG_ACK_REQ; }
     bool isAck() const         { return flags & PACKET_FLAG_IS_ACK; }
