@@ -9,12 +9,12 @@
 // ---- GPIO Pin Assignments ---------------------------------------------------
 
 // Buttons (active LOW, internal pull-up)
-constexpr uint8_t PIN_BTN_DOT  = 47;
-constexpr uint8_t PIN_BTN_DASH = 48;
-constexpr uint8_t PIN_BTN_SEND = 26;
+constexpr uint8_t PIN_BTN_DOT  = 6;
+constexpr uint8_t PIN_BTN_DASH = 7;
+constexpr uint8_t PIN_BTN_SEND = 5;
 
 // Vibration motor (PWM-capable output)
-constexpr uint8_t PIN_VIBRATION = 46;
+constexpr uint8_t PIN_VIBRATION = 19;
 
 // ---- Button Bitmasks --------------------------------------------------------
 constexpr uint8_t BTN_MASK_DOT  = 0x01;  // bit 0
