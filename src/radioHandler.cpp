@@ -1,20 +1,12 @@
 #include "radioHandler.h"
-#include "displayHandler.h"
 #include <RadioLib.h>
 #include <Arduino.h>
 
 namespace {
-	constexpr float kBandwidthKHz = 125.0F;
-	constexpr uint8_t kSpreadingFactor = 7;   // SF7
-	constexpr uint8_t kCodingRate = 5;        // 4/5
-	constexpr int8_t kOutputPowerDbm = 5;     // matches prior config
-	constexpr uint16_t kPreambleLength = 8;
-
 	volatile bool receivedFlag = false;
 	volatile bool transmitting = false;
 	volatile bool enableInterrupt = true;
 
-	String lastMessage;
 	int16_t lastRssi = 0;
 
 	SX1262 radio = new Module(SS, DIO0, RST_LoRa, BUSY_LoRa);
@@ -25,16 +17,28 @@ namespace {
 		}
 		receivedFlag = true;
 	}
+
+	// Transmit raw bytes (internal helper).
+	bool rawTransmit(const uint8_t *data, uint8_t len) {
+		enableInterrupt = false;
+		transmitting = true;
+		int state = radio.transmit(data, len);
+		transmitting = false;
+		enableInterrupt = true;
+		radio.startReceive();
+		return state == RADIOLIB_ERR_NONE;
+	}
 }
 
-bool radioInit(float frequencyMHz) {
+bool radioInit() {
 	int state = radio.begin(
-		frequencyMHz,
-		kBandwidthKHz,
-		kSpreadingFactor,
-		kCodingRate,
-		RADIOLIB_SX126X_SYNC_WORD_PRIVATE,
-		kOutputPowerDbm
+		LORA_FREQUENCY_MHZ,
+		LORA_BANDWIDTH_KHZ,
+		LORA_SPREADING_FACTOR,
+		LORA_CODING_RATE,
+		LORA_SYNC_WORD,
+		LORA_TX_POWER_DBM,
+		LORA_PREAMBLE_LENGTH
 	);
 
 	if (state != RADIOLIB_ERR_NONE) {
@@ -63,7 +67,7 @@ bool radioStartReceive() {
 	return true;
 }
 
-bool radioReceiveAvailable(String &outMessage, int16_t &outRssi, bool sendAck) {
+bool radioReceivePacket(Packet &outPkt, int16_t &outRssi, uint8_t localID) {
 	if (!receivedFlag) {
 		return false;
 	}
@@ -71,73 +75,78 @@ bool radioReceiveAvailable(String &outMessage, int16_t &outRssi, bool sendAck) {
 	enableInterrupt = false;
 	receivedFlag = false;
 
-	String incoming;
-	int state = radio.readData(incoming);
-	if (state == RADIOLIB_ERR_NONE) {
-		lastMessage = incoming;
-		lastRssi = radio.getRSSI();
-		outMessage = lastMessage;
-		outRssi = lastRssi;
+	uint8_t buf[256];
+	size_t len = radio.getPacketLength();
+	if (len == 0 || len > sizeof(buf)) {
 		enableInterrupt = true;
-        if (sendAck) {
-            String ack = "ACK";
-            radioTransmit(ack, false);
-        }
 		radio.startReceive();
-		return true;
+		return false;
 	}
 
-	Serial.printf("Radio readData failed, code %d\n", state);
+	int state = radio.readData(buf, len);
+	if (state != RADIOLIB_ERR_NONE) {
+		Serial.printf("Radio readData failed, code %d\n", state);
+		enableInterrupt = true;
+		radio.startReceive();
+		return false;
+	}
+
+	lastRssi = radio.getRSSI();
 	enableInterrupt = true;
 	radio.startReceive();
-	return false;
+
+	Packet pkt;
+	if (!packetDeserialize(buf, len, pkt)) {
+		return false;
+	}
+
+	// Address filter: accept broadcast or packets addressed to us
+	if (pkt.dstID != BROADCAST_ADDR && pkt.dstID != localID) {
+		return false;
+	}
+
+	outPkt = pkt;
+	outRssi = lastRssi;
+	return true;
 }
 
- TransmitStatus radioTransmit(String &payload, bool shouldWaitForAck) {
-
-    if (transmitting) {
-        return TransmitStatus::Failed;
-    }
-	enableInterrupt = false;
-    transmitting = true;
-
-	int state = radio.transmit(payload);
-
-	enableInterrupt = true;
-    transmitting = false;
-	radio.startReceive();
-
-	if (state != RADIOLIB_ERR_NONE) {
-		Serial.printf("Fail %d: %s\n", state, payload.c_str());
+TransmitStatus radioTransmitPacket(const Packet &pkt, bool waitAck, uint8_t localID) {
+	if (transmitting) {
 		return TransmitStatus::Failed;
 	}
 
-	if (shouldWaitForAck) {
-		if (!waitForAck(2000)) {
-            displayShowMessage("NoAck: " + payload);
-			Serial.println("ACK not received");
-			return TransmitStatus::NoAck;
+	uint8_t buf[256];
+	uint8_t len = packetSerialize(pkt, buf, static_cast<uint8_t>(sizeof(buf)));
+	if (len == 0) {
+		return TransmitStatus::Failed;
+	}
+
+	if (!rawTransmit(buf, len)) {
+		return TransmitStatus::Failed;
+	}
+
+	if (waitAck && !pkt.isBroadcast()) {
+		unsigned long startMs = millis();
+		while (millis() - startMs < ACK_TIMEOUT_MS) {
+			Packet ackPkt;
+			int16_t rssi;
+			if (radioReceivePacket(ackPkt, rssi, localID)) {
+				if (ackPkt.isAck() && ackPkt.seqNum == pkt.seqNum && ackPkt.srcID == pkt.dstID) {
+					return TransmitStatus::Ok;
+				}
+			}
+			delay(10);
 		}
+		return TransmitStatus::NoAck;
 	}
 
 	return TransmitStatus::Ok;
 }
 
-bool waitForAck(unsigned long timeoutMs) {
-    unsigned long startMs = millis();
-    while (millis() - startMs < timeoutMs) {
-        String message;
-        int16_t rssi = 0;
-        if (radioReceiveAvailable(message, rssi)) {
-            if (message == "ACK") {
-                return true;
-            }
-        }
-        delay(10);
-    }
-    return false;
-}
-
 bool radioIdle() {
 	return !transmitting;
+}
+
+int16_t radioLastRssi() {
+	return lastRssi;
 }

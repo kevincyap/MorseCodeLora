@@ -1,27 +1,29 @@
 #pragma once
 
 #include <Arduino.h>
+#include "config.h"
+#include "packetProtocol.h"
 
-enum class TransmitStatus {
+enum class TransmitStatus : uint8_t {
     Ok,
     Failed,
     NoAck,
 };
 
-// Initializes the SX1262-based RadioLib instance.
-bool radioInit(float frequencyMHz);
+// Initializes the SX1262 with range-optimized parameters from config.h.
+bool radioInit();
 
 // Arms the radio for continuous receive; safe to call repeatedly.
 bool radioStartReceive();
 
-// Checks if a packet has been received and returns it when available.
-bool radioReceiveAvailable(String &outMessage, int16_t &outRssi, bool sendAck = false);
+// Non-blocking check for received packet. Filters by localID (accepts broadcast + own address).
+bool radioReceivePacket(Packet &outPkt, int16_t &outRssi, uint8_t localID);
 
-// Sends a packet using the configured LoRa parameters.
-TransmitStatus radioTransmit(String &payload, bool shouldWaitForAck = false);
+// Transmit a packet. Optionally waits for ACK (blocks up to ACK_TIMEOUT_MS).
+TransmitStatus radioTransmitPacket(const Packet &pkt, bool waitAck = false, uint8_t localID = 0);
 
-// Indicates whether the radio is idle (not currently transmitting).
+// Indicates whether the radio is idle.
 bool radioIdle();
 
-// Waits for an acknowledgment packet within the specified timeout (ms).
-bool waitForAck(unsigned long timeoutMs);
+// Returns RSSI of last received packet.
+int16_t radioLastRssi();
