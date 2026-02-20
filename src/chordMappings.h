@@ -24,8 +24,8 @@ struct ChordMapping {
 // Wider chords (more buttons) are checked first by the input handler.
 constexpr ChordMapping CHORD_MAP[] = {
     { BTN_MASK_DOT | BTN_MASK_DASH | BTN_MASK_SEND, ChordAction::ForceSleep       },
-    { BTN_MASK_DOT | BTN_MASK_DASH,                  ChordAction::ScrollHistory     },
-    { BTN_MASK_DOT | BTN_MASK_SEND,                  ChordAction::Backspace         },
+    { BTN_MASK_DOT | BTN_MASK_SEND,                  ChordAction::ScrollHistory     },
+    { BTN_MASK_DOT | BTN_MASK_DASH,                  ChordAction::Backspace         },
     { BTN_MASK_DASH | BTN_MASK_SEND,                 ChordAction::ToggleAddressing  },
 };
 

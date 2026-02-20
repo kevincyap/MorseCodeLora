@@ -189,7 +189,10 @@ void loop() {
 
     // ---- Handle button/chord events -----------------------------------------
     if (evt != ButtonEvent::None) {
-        viewingHistory = false;  // exit history view on any press
+        // Exit history view on any press EXCEPT scroll chord
+        if (!(evt == ButtonEvent::Chord && inputLastChord() == ChordAction::ScrollHistory)) {
+            viewingHistory = false;
+        }
     }
 
     switch (evt) {
