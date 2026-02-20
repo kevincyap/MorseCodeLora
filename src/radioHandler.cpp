@@ -27,7 +27,16 @@ namespace {
 	bool rawTransmit(const uint8_t *data, uint8_t len) {
 		enableInterrupt = false;
 		transmitting = true;
+
+		// Enable PA TX path before transmit
+		digitalWrite(PIN_PA_TX_EN, HIGH);
+		delay(2);
+
 		int state = radio.transmit(data, len);
+
+		// Disable PA TX path, return to RX mode
+		digitalWrite(PIN_PA_TX_EN, LOW);
+
 		transmitting = false;
 		enableInterrupt = true;
 		radio.startReceive();
@@ -36,6 +45,15 @@ namespace {
 }
 
 bool radioInit() {
+	// Enable Heltec V4 external PA
+	pinMode(PIN_PA_POWER, OUTPUT);
+	digitalWrite(PIN_PA_POWER, HIGH);
+	pinMode(PIN_PA_EN, OUTPUT);
+	digitalWrite(PIN_PA_EN, HIGH);
+	pinMode(PIN_PA_TX_EN, OUTPUT);
+	digitalWrite(PIN_PA_TX_EN, LOW);  // LOW = RX mode, HIGH = TX mode
+	delay(5);
+
 	// Explicitly init SPI with correct Heltec V4 pins
 	SPI.begin(SCK, MISO, MOSI, SS);
 	Serial.printf("SPI pins: SCK=%d MISO=%d MOSI=%d SS=%d\n", SCK, MISO, MOSI, SS);
@@ -216,4 +234,11 @@ bool radioStartDutyCycle() {
 		return false;
 	}
 	return true;
+}
+
+void radioPaSleep() {
+	// Disable external PA for deep sleep to save power
+	digitalWrite(PIN_PA_TX_EN, LOW);
+	digitalWrite(PIN_PA_EN, LOW);
+	digitalWrite(PIN_PA_POWER, LOW);
 }

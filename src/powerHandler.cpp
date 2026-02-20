@@ -64,6 +64,9 @@ void powerDeepSleep() {
     // wake/listen/sleep and assert DIO1 on packet reception.
     radioStartDutyCycle();
 
+    // Disable external PA for deep sleep
+    radioPaSleep();
+
     VextOFF();
 
     // Configure wake pins: buttons + DIO1 (radio RX interrupt)

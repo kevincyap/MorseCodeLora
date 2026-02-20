@@ -35,3 +35,6 @@ int16_t radioLastRssi();
 // The SX1262 autonomously wakes, checks for preamble, and sleeps.
 // DIO1 fires when a packet is received.
 bool radioStartDutyCycle();
+
+// Disable external PA for deep sleep.
+void radioPaSleep();

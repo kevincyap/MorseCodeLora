@@ -10,7 +10,7 @@
 
 // Buttons (active LOW, internal pull-up)
 constexpr uint8_t PIN_BTN_DOT  = 6;
-constexpr uint8_t PIN_BTN_DASH = 7;
+constexpr uint8_t PIN_BTN_DASH = 4;   // was 7, reassigned (7 = LORA_PA_POWER)
 constexpr uint8_t PIN_BTN_SEND = 5;
 
 // Vibration motor (PWM-capable output)
@@ -34,6 +34,12 @@ constexpr uint8_t  LORA_CODING_RATE     = 8;      // denominator: 4/8
 constexpr int8_t   LORA_TX_POWER_DBM    = 22;
 constexpr uint16_t LORA_PREAMBLE_LENGTH = 12;
 constexpr uint8_t  LORA_SYNC_WORD       = 0x12;   // private network
+
+// ---- Heltec V4 External PA Control -----------------------------------------
+// The V4 has an external power amplifier that must be GPIO-controlled.
+constexpr uint8_t PIN_PA_POWER = 7;    // PA power supply enable
+constexpr uint8_t PIN_PA_EN    = 2;    // PA enable (held LOW during deep sleep)
+constexpr uint8_t PIN_PA_TX_EN = 46;   // PA TX path enable (HIGH only during TX)
 
 // ---- Packet Protocol --------------------------------------------------------
 constexpr uint8_t PACKET_FLAG_ACK_REQ   = 0x01;   // bit 0: sender wants ACK
