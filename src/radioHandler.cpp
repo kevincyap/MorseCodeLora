@@ -42,11 +42,19 @@ bool radioInit() {
 		LORA_CODING_RATE,
 		LORA_SYNC_WORD,
 		LORA_TX_POWER_DBM,
-		LORA_PREAMBLE_LENGTH
+		LORA_PREAMBLE_LENGTH,
+		1.8  // TCXO voltage — Heltec V4 uses 1.8V
 	);
 
 	if (state != RADIOLIB_ERR_NONE) {
 		Serial.printf("Radio init failed, code %d\n", state);
+		return false;
+	}
+
+	// Heltec V4 uses DIO2 to control the RF switch (antenna TX/RX switching)
+	state = radio.setDio2AsRfSwitch(true);
+	if (state != RADIOLIB_ERR_NONE) {
+		Serial.printf("DIO2 RF switch config failed, code %d\n", state);
 		return false;
 	}
 
