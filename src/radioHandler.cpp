@@ -1,5 +1,6 @@
 #include "radioHandler.h"
 #include <RadioLib.h>
+#include <SPI.h>
 #include <Arduino.h>
 
 namespace {
@@ -35,6 +36,11 @@ namespace {
 }
 
 bool radioInit() {
+	// Explicitly init SPI with correct Heltec V4 pins
+	SPI.begin(SCK, MISO, MOSI, SS);
+	Serial.printf("SPI pins: SCK=%d MISO=%d MOSI=%d SS=%d\n", SCK, MISO, MOSI, SS);
+	Serial.printf("Radio pins: NSS=%d IRQ=%d RST=%d BUSY=%d\n", SS, DIO0, RST_LoRa, BUSY_LoRa);
+
 	int state = radio.begin(
 		LORA_FREQUENCY_MHZ,
 		LORA_BANDWIDTH_KHZ,
@@ -45,6 +51,7 @@ bool radioInit() {
 		LORA_PREAMBLE_LENGTH,
 		1.8  // TCXO voltage — Heltec V4 uses 1.8V
 	);
+	Serial.printf("radio.begin() = %d\n", state);
 
 	if (state != RADIOLIB_ERR_NONE) {
 		Serial.printf("Radio init failed, code %d\n", state);
@@ -53,10 +60,31 @@ bool radioInit() {
 
 	// Heltec V4 uses DIO2 to control the RF switch (antenna TX/RX switching)
 	state = radio.setDio2AsRfSwitch(true);
+	Serial.printf("setDio2AsRfSwitch() = %d\n", state);
 	if (state != RADIOLIB_ERR_NONE) {
 		Serial.printf("DIO2 RF switch config failed, code %d\n", state);
 		return false;
 	}
+
+	// Raise OCP limit — RadioLib defaults to 60mA, but 22 dBm HP PA needs ~140mA
+	state = radio.setCurrentLimit(140.0);
+	Serial.printf("setCurrentLimit(140) = %d\n", state);
+	if (state != RADIOLIB_ERR_NONE) {
+		Serial.printf("Current limit config failed, code %d\n", state);
+		return false;
+	}
+
+	// Re-apply output power after OCP change to ensure PA is configured correctly
+	state = radio.setOutputPower(LORA_TX_POWER_DBM);
+	Serial.printf("setOutputPower(%d) = %d\n", LORA_TX_POWER_DBM, state);
+	if (state != RADIOLIB_ERR_NONE) {
+		Serial.printf("Output power config failed, code %d\n", state);
+		return false;
+	}
+
+	// Read back current limit to verify
+	float actualOCP = radio.getCurrentLimit();
+	Serial.printf("Actual current limit: %.1f mA\n", actualOCP);
 
 	radio.setDio1Action(setFlag);
 
@@ -108,6 +136,8 @@ bool radioReceivePacket(Packet &outPkt, int16_t &outRssi, uint8_t localID) {
 	}
 
 	lastRssi = radio.getRSSI();
+	float snr = radio.getSNR();
+	Serial.printf("RX: RSSI=%d dBm, SNR=%.1f dB, len=%u\n", lastRssi, snr, (unsigned)len);
 	enableInterrupt = true;
 	radio.startReceive();
 
