@@ -4,7 +4,7 @@
 
 static constexpr uint8_t HEADER_SIZE = 4;  // flags + srcID + dstID + seqNum
 
-uint8_t packetSerialize(const Packet &pkt, uint8_t *buf, uint8_t bufSize) {
+uint8_t packetSerialize(const Packet &pkt, uint8_t *buf, uint16_t bufSize) {
     uint8_t pos = 0;
     if (bufSize < HEADER_SIZE) return 0;
 

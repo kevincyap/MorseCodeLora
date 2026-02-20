@@ -8,6 +8,9 @@ enum class TransmitStatus : uint8_t {
     Ok,
     Failed,
     NoAck,
+    AlreadyTransmitting,
+    NoPacket,
+    TransmitFailed
 };
 
 // Initializes the SX1262 with range-optimized parameters from config.h.

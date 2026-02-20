@@ -112,6 +112,8 @@ After flashing, open the serial monitor and configure each device:
 ```
 name:Alpha          # Set device name (max 16 chars, persists in NVS)
 id:2A               # Set device ID as hex 01-FE (persists in NVS)
+send:HELLO WORLD    # Send a LoRa message from serial monitor
+HELLO AGAIN         # Plain text line also sends immediately
 ```
 
 These persist through power cycles and reflashes. If no name is set, it defaults to "Device XX" where XX is the hex ID.

@@ -26,7 +26,7 @@ struct Packet {
 
 // Serialize a Packet into a byte buffer for transmission.
 // Returns the number of bytes written, or 0 on error.
-uint8_t packetSerialize(const Packet &pkt, uint8_t *buf, uint8_t bufSize);
+uint8_t packetSerialize(const Packet &pkt, uint8_t *buf, uint16_t bufSize);
 
 // Deserialize a byte buffer into a Packet.
 // Returns true on success.

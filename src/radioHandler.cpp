@@ -120,17 +120,17 @@ bool radioReceivePacket(Packet &outPkt, int16_t &outRssi, uint8_t localID) {
 
 TransmitStatus radioTransmitPacket(const Packet &pkt, bool waitAck, uint8_t localID) {
 	if (transmitting) {
-		return TransmitStatus::Failed;
+		return TransmitStatus::AlreadyTransmitting;
 	}
 
 	uint8_t buf[256];
-	uint8_t len = packetSerialize(pkt, buf, static_cast<uint8_t>(sizeof(buf)));
+	uint8_t len = packetSerialize(pkt, buf, static_cast<uint16_t>(sizeof(buf)));
 	if (len == 0) {
-		return TransmitStatus::Failed;
+		return TransmitStatus::NoPacket;
 	}
 
 	if (!rawTransmit(buf, len)) {
-		return TransmitStatus::Failed;
+		return TransmitStatus::TransmitFailed;
 	}
 
 	if (waitAck && !pkt.isBroadcast()) {

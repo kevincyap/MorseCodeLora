@@ -56,6 +56,22 @@ static void commitCurrentChar() {
     morseBuffer = "";
 }
 
+static void prepareSerialMessage(const String &text) {
+    decodedText = text;
+    decodedText.trim();
+
+    morseBuffer = "";
+    fullMorseString = "";
+
+    for (size_t i = 0; i < decodedText.length(); ++i) {
+        String m = charToMorse(decodedText[i]);
+        if (m.length() > 0) {
+            if (fullMorseString.length() > 0) fullMorseString += ' ';
+            fullMorseString += m;
+        }
+    }
+}
+
 static void sendMessage() {
     commitCurrentChar();
     if (decodedText.length() == 0) return;
@@ -79,6 +95,18 @@ static void sendMessage() {
             break;
         case TransmitStatus::Failed:
             displaySending("Failed");
+            break;
+        case TransmitStatus::AlreadyTransmitting:
+            displaySending("Already Transmitting");
+            break;
+        case TransmitStatus::NoPacket:
+            displaySending("No Packet");
+            break;
+        case TransmitStatus::TransmitFailed:
+            displaySending("Transmit Failed");
+            break;
+        default:
+            displaySending("Error" + String(static_cast<uint8_t>(status)));
             break;
     }
 
@@ -117,7 +145,7 @@ static void handleScrollHistory() {
         historyViewIdx = (historyViewIdx > 0) ? historyViewIdx - 1 : historyCount - 1;
     }
     displayIdle("History " + String(historyViewIdx + 1) + "/" + String(historyCount),
-                messageHistory[historyViewIdx]);
+                messageHistory[historyViewIdx] + (viewingHistory ? " <" : ""));
 }
 
 // ---- Setup & Loop -----------------------------------------------------------
@@ -134,7 +162,8 @@ void setup() {
 
     localID = deviceGetID();
     Serial.printf("Device ID: 0x%02X  Name: %s\n", localID, deviceGetName().c_str());
-    Serial.println("Serial commands: name:<text>  id:<hex>");
+    Serial.println("Serial commands: name:<text>  id:<hex>  send:<text>");
+    Serial.println("Tip: any plain text line (without ':') is sent as a message.");
 
     if (!radioInit()) {
         displayShowMessage("Radio FAIL");
@@ -257,12 +286,19 @@ void loop() {
     // ---- Power management ---------------------------------------------------
     bool activity = (evt != ButtonEvent::None) || rxPkt.text.length() > 0;
     powerUpdate(activity || composing);
-
-    // ---- Serial commands (name:<text> or id:<hex>) --------------------------
+    if (deviceGetID() == 0x42)
+    {
+        prepareSerialMessage(String(millis() % 10));
+        sendMessage();
+        delay(5000);
+    }
+    // ---- Serial commands (name:<text>, id:<hex>, send:<text>) ----------------
     if (Serial.available()) {
         String cmd = Serial.readStringUntil('\n');
         cmd.trim();
-        if (cmd.startsWith("name:")) {
+        if (cmd.length() == 0) {
+            // Ignore empty lines.
+        } else if (cmd.startsWith("name:")) {
             String newName = cmd.substring(5);
             newName.trim();
             deviceSetName(newName);
@@ -278,6 +314,17 @@ void loop() {
             } else {
                 Serial.println("Invalid ID (must be 01-FE)");
             }
+        } else if (cmd.startsWith("send:")) {
+            String serialText = cmd.substring(5);
+            serialText.trim();
+            prepareSerialMessage(serialText);
+            sendMessage();
+        } else if (cmd.indexOf(':') < 0) {
+            // Plain text fallback for quick serial monitor use.
+            prepareSerialMessage(cmd);
+            sendMessage();
+        } else {
+            Serial.println("Unknown command. Use name:<text>, id:<hex>, or send:<text>");
         }
     }
 }

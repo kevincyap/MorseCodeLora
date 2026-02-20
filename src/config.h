@@ -14,7 +14,7 @@ constexpr uint8_t PIN_BTN_DASH = 7;
 constexpr uint8_t PIN_BTN_SEND = 5;
 
 // Vibration motor (PWM-capable output)
-constexpr uint8_t PIN_VIBRATION = 19;
+constexpr uint8_t PIN_VIBRATION = LED_BUILTIN;
 
 // ---- Button Bitmasks --------------------------------------------------------
 constexpr uint8_t BTN_MASK_DOT  = 0x01;  // bit 0
@@ -50,8 +50,8 @@ constexpr unsigned long VIB_SYMBOL_GAP_MS  = 100;  // gap between dot/dash
 constexpr unsigned long VIB_CHAR_GAP_MS    = 200;  // gap between characters
 
 // ---- Power Management -------------------------------------------------------
-constexpr unsigned long DISPLAY_DIM_MS  = 30000;   // 30s idle → dim
-constexpr unsigned long DEEP_SLEEP_MS   = 120000;  // 2min idle → deep sleep
+constexpr unsigned long DISPLAY_DIM_MS  = 300000;   // 30s idle → dim
+constexpr unsigned long DEEP_SLEEP_MS   = 1200000;  // 2min idle → deep sleep
 
 // ---- Radio Duty Cycle (tune with hardware testing) --------------------------
 // SX1262 RX duty cycle: radio wakes, listens for preamble, sleeps if none.
