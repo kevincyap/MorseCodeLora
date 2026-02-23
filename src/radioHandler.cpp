@@ -1,44 +1,96 @@
 #include "radioHandler.h"
-#include "displayHandler.h"
 #include <RadioLib.h>
+#include <SPI.h>
 #include <Arduino.h>
 
 namespace {
-	constexpr float kBandwidthKHz = 125.0F;
-	constexpr uint8_t kSpreadingFactor = 7;   // SF7
-	constexpr uint8_t kCodingRate = 5;        // 4/5
-	constexpr int8_t kOutputPowerDbm = 5;     // matches prior config
-	constexpr uint16_t kPreambleLength = 8;
-
 	volatile bool receivedFlag = false;
-	volatile bool transmitting = false;
+	bool transmitting = false;
 	volatile bool enableInterrupt = true;
 
-	String lastMessage;
 	int16_t lastRssi = 0;
 
 	SX1262 radio = new Module(SS, DIO0, RST_LoRa, BUSY_LoRa);
+
+	portMUX_TYPE radioMux = portMUX_INITIALIZER_UNLOCKED;
 
 	void setFlag() {
 		if (!enableInterrupt) {
 			return;
 		}
+		portENTER_CRITICAL_ISR(&radioMux);
 		receivedFlag = true;
+		portEXIT_CRITICAL_ISR(&radioMux);
+	}
+
+	// Transmit raw bytes (internal helper).
+	bool rawTransmit(const uint8_t *data, uint8_t len) {
+		enableInterrupt = false;
+		transmitting = true;
+
+		// Enable PA TX path before transmit
+		digitalWrite(PIN_PA_TX_EN, HIGH);
+		delay(2);
+
+		int state = radio.transmit(data, len);
+
+		// Disable PA TX path, return to RX mode
+		digitalWrite(PIN_PA_TX_EN, LOW);
+
+		transmitting = false;
+		enableInterrupt = true;
+		radio.startReceive();
+		return state == RADIOLIB_ERR_NONE;
 	}
 }
 
-bool radioInit(float frequencyMHz) {
+bool radioInit() {
+	// Enable Heltec V4 external PA
+	pinMode(PIN_PA_POWER, OUTPUT);
+	digitalWrite(PIN_PA_POWER, HIGH);
+	pinMode(PIN_PA_EN, OUTPUT);
+	digitalWrite(PIN_PA_EN, HIGH);
+	pinMode(PIN_PA_TX_EN, OUTPUT);
+	digitalWrite(PIN_PA_TX_EN, LOW);  // LOW = RX mode, HIGH = TX mode
+	delay(5);
+
+	// Explicitly init SPI with correct Heltec V4 pins
+	SPI.begin(SCK, MISO, MOSI, SS);
+
 	int state = radio.begin(
-		frequencyMHz,
-		kBandwidthKHz,
-		kSpreadingFactor,
-		kCodingRate,
-		RADIOLIB_SX126X_SYNC_WORD_PRIVATE,
-		kOutputPowerDbm
+		LORA_FREQUENCY_MHZ,
+		LORA_BANDWIDTH_KHZ,
+		LORA_SPREADING_FACTOR,
+		LORA_CODING_RATE,
+		LORA_SYNC_WORD,
+		LORA_TX_POWER_DBM,
+		LORA_PREAMBLE_LENGTH,
+		1.8  // TCXO voltage — Heltec V4 uses 1.8V
 	);
 
 	if (state != RADIOLIB_ERR_NONE) {
 		Serial.printf("Radio init failed, code %d\n", state);
+		return false;
+	}
+
+	// Heltec V4 uses DIO2 to control the RF switch (antenna TX/RX switching)
+	state = radio.setDio2AsRfSwitch(true);
+	if (state != RADIOLIB_ERR_NONE) {
+		Serial.printf("DIO2 RF switch config failed, code %d\n", state);
+		return false;
+	}
+
+	// Raise OCP limit — RadioLib defaults to 60mA, but 22 dBm HP PA needs ~140mA
+	state = radio.setCurrentLimit(140.0);
+	if (state != RADIOLIB_ERR_NONE) {
+		Serial.printf("Current limit config failed, code %d\n", state);
+		return false;
+	}
+
+	// Re-apply output power after OCP change to ensure PA is configured correctly
+	state = radio.setOutputPower(LORA_TX_POWER_DBM);
+	if (state != RADIOLIB_ERR_NONE) {
+		Serial.printf("Output power config failed, code %d\n", state);
 		return false;
 	}
 
@@ -63,81 +115,120 @@ bool radioStartReceive() {
 	return true;
 }
 
-bool radioReceiveAvailable(String &outMessage, int16_t &outRssi, bool sendAck) {
-	if (!receivedFlag) {
+bool radioReceivePacket(Packet &outPkt, int16_t &outRssi, uint8_t localID) {
+	portENTER_CRITICAL(&radioMux);
+	bool hadFlag = receivedFlag;
+	receivedFlag = false;
+	portEXIT_CRITICAL(&radioMux);
+
+	if (!hadFlag) {
 		return false;
 	}
 
 	enableInterrupt = false;
-	receivedFlag = false;
 
-	String incoming;
-	int state = radio.readData(incoming);
-	if (state == RADIOLIB_ERR_NONE) {
-		lastMessage = incoming;
-		lastRssi = radio.getRSSI();
-		outMessage = lastMessage;
-		outRssi = lastRssi;
+	uint8_t buf[256];
+	size_t len = radio.getPacketLength();
+	if (len == 0 || len > sizeof(buf)) {
 		enableInterrupt = true;
-        if (sendAck) {
-            String ack = "ACK";
-            radioTransmit(ack, false);
-        }
 		radio.startReceive();
-		return true;
+		return false;
 	}
 
-	Serial.printf("Radio readData failed, code %d\n", state);
+	int state = radio.readData(buf, len);
+	if (state != RADIOLIB_ERR_NONE) {
+		Serial.printf("Radio readData failed, code %d\n", state);
+		enableInterrupt = true;
+		radio.startReceive();
+		return false;
+	}
+
+	lastRssi = radio.getRSSI();
+	float snr = radio.getSNR();
+	Serial.printf("RX: RSSI=%d dBm, SNR=%.1f dB, len=%u\n", lastRssi, snr, (unsigned)len);
 	enableInterrupt = true;
 	radio.startReceive();
-	return false;
+
+	Packet pkt;
+	if (!packetDeserialize(buf, len, pkt)) {
+		return false;
+	}
+
+	// Address filter: accept broadcast or packets addressed to us
+	if (pkt.dstID != BROADCAST_ADDR && pkt.dstID != localID) {
+		return false;
+	}
+
+	outPkt = pkt;
+	outRssi = lastRssi;
+	return true;
 }
 
- TransmitStatus radioTransmit(String &payload, bool shouldWaitForAck) {
-
-    if (transmitting) {
-        return TransmitStatus::Failed;
-    }
-	enableInterrupt = false;
-    transmitting = true;
-
-	int state = radio.transmit(payload);
-
-	enableInterrupt = true;
-    transmitting = false;
-	radio.startReceive();
-
-	if (state != RADIOLIB_ERR_NONE) {
-		Serial.printf("Fail %d: %s\n", state, payload.c_str());
-		return TransmitStatus::Failed;
+TransmitStatus radioTransmitPacket(const Packet &pkt, bool waitAck, uint8_t localID) {
+	if (transmitting) {
+		return TransmitStatus::AlreadyTransmitting;
 	}
 
-	if (shouldWaitForAck) {
-		if (!waitForAck(2000)) {
-            displayShowMessage("NoAck: " + payload);
-			Serial.println("ACK not received");
-			return TransmitStatus::NoAck;
+	uint8_t buf[256];
+	uint8_t len = packetSerialize(pkt, buf, static_cast<uint16_t>(sizeof(buf)));
+	if (len == 0) {
+		return TransmitStatus::NoPacket;
+	}
+
+	if (!rawTransmit(buf, len)) {
+		return TransmitStatus::TransmitFailed;
+	}
+
+	if (waitAck && !pkt.isBroadcast()) {
+		unsigned long startMs = millis();
+		while (millis() - startMs < ACK_TIMEOUT_MS) {
+			Packet ackPkt;
+			int16_t rssi;
+			if (radioReceivePacket(ackPkt, rssi, localID)) {
+				if (ackPkt.isAck() && ackPkt.seqNum == pkt.seqNum && ackPkt.srcID == pkt.dstID) {
+					return TransmitStatus::Ok;
+				}
+			}
+			delay(10);
 		}
+		return TransmitStatus::NoAck;
 	}
 
 	return TransmitStatus::Ok;
 }
 
-bool waitForAck(unsigned long timeoutMs) {
-    unsigned long startMs = millis();
-    while (millis() - startMs < timeoutMs) {
-        String message;
-        int16_t rssi = 0;
-        if (radioReceiveAvailable(message, rssi)) {
-            if (message == "ACK") {
-                return true;
-            }
-        }
-        delay(10);
-    }
-    return false;
-}
-
 bool radioIdle() {
 	return !transmitting;
+}
+
+int16_t radioLastRssi() {
+	return lastRssi;
+}
+
+bool radioStartDutyCycle() {
+	enableInterrupt = true;
+
+#if DUTY_CYCLE_RX_MS > 0 && DUTY_CYCLE_SLEEP_MS > 0
+	// Manual tuning: use config.h values (microseconds to RadioLib)
+	int state = radio.startReceiveDutyCycle(
+		DUTY_CYCLE_RX_MS * 1000UL,
+		DUTY_CYCLE_SLEEP_MS * 1000UL
+	);
+#else
+	// Auto mode: RadioLib calculates optimal windows from preamble config
+	int state = radio.startReceiveDutyCycleAuto(LORA_PREAMBLE_LENGTH, 8);
+#endif
+
+	if (state != RADIOLIB_ERR_NONE) {
+		Serial.printf("Radio duty cycle failed, code %d\n", state);
+		return false;
+	}
+	return true;
+}
+
+void radioPaSleep() {
+	// Disable external PA for deep sleep to save power
+	digitalWrite(PIN_PA_TX_EN, LOW);
+	digitalWrite(PIN_PA_EN, LOW);
+	digitalWrite(PIN_PA_POWER, LOW);
 }
