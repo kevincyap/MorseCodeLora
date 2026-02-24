@@ -20,7 +20,8 @@ void displaySetScreen(DisplayScreen screen);
 void displayIdle(const String &status, const String &lastMsg = "");
 
 // Composing screen: top = raw morse, bottom = decoded preview.
-void displayComposing(const String &morseInput, const String &decodedPreview);
+// Optional rxNotify shows a received-message banner at the screen bottom.
+void displayComposing(const String &morseInput, const String &decodedPreview, const String &rxNotify = "");
 
 // Sending screen: show send status.
 void displaySending(const String &status);

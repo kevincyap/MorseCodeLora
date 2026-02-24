@@ -44,7 +44,7 @@ void displayIdle(const String &status, const String &lastMsg) {
 	display.display();
 }
 
-void displayComposing(const String &morseInput, const String &decodedPreview) {
+void displayComposing(const String &morseInput, const String &decodedPreview, const String &rxNotify) {
 	display.clear();
 	display.setFont(ArialMT_Plain_10);
 	display.setTextAlignment(TEXT_ALIGN_LEFT);
@@ -53,9 +53,15 @@ void displayComposing(const String &morseInput, const String &decodedPreview) {
 	display.drawString(0, 0, "Morse:");
 	display.drawString(0, 12, morseInput);
 
-	// Bottom: decoded text preview
+	// Middle: decoded text preview
 	display.drawHorizontalLine(0, 30, 128);
 	display.drawString(0, 34, decodedPreview);
+
+	// Bottom: RX notification banner (if any)
+	if (rxNotify.length() > 0) {
+		display.drawHorizontalLine(0, 50, 128);
+		display.drawString(0, 52, "RX:" + rxNotify);
+	}
 
 	display.display();
 }

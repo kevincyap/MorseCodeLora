@@ -23,6 +23,11 @@ static String fullMorseString;  // all morse for the message (space-separated ch
 static unsigned long lastSymbolMs = 0;
 static bool composing = false;
 
+// RX notification shown on composing screen
+static String rxNotifyText;
+static unsigned long rxNotifyMs = 0;
+static const unsigned long RX_NOTIFY_DURATION_MS = 5000;
+
 // ---- Helpers ----------------------------------------------------------------
 
 static void commitCurrentChar() {
@@ -34,6 +39,13 @@ static void commitCurrentChar() {
         fullMorseString += morseBuffer;
     }
     morseBuffer = "";
+}
+
+// Return the active RX notification, or "" if expired.
+static String activeRxNotify() {
+    if (rxNotifyText.length() > 0 && (millis() - rxNotifyMs) < RX_NOTIFY_DURATION_MS)
+        return rxNotifyText;
+    return "";
 }
 
 static void prepareSerialMessage(const String &text) {
@@ -98,7 +110,7 @@ static void sendMessage() {
     decodedText = "";
     fullMorseString = "";
     composing = false;
-    displayIdle("Ready", "Sent: " + pkt.text);
+    displayIdle("Ready", "TX: " + pkt.text);
 }
 
 static void handleBackspace() {
@@ -110,7 +122,7 @@ static void handleBackspace() {
         int lastSpace = fullMorseString.lastIndexOf(' ');
         fullMorseString = (lastSpace >= 0) ? fullMorseString.substring(0, lastSpace) : "";
     }
-    displayComposing(fullMorseString + (morseBuffer.length() > 0 ? " " + morseBuffer : ""), decodedText);
+    displayComposing(fullMorseString + (morseBuffer.length() > 0 ? " " + morseBuffer : ""), decodedText, activeRxNotify());
 }
 
 // ---- Setup & Loop -----------------------------------------------------------
@@ -164,14 +176,14 @@ void loop() {
                 composing = true;
                 morseBuffer += '.';
                 lastSymbolMs = millis();
-                displayComposing(fullMorseString + (morseBuffer.length() > 0 ? " " + morseBuffer : ""), decodedText);
+                displayComposing(fullMorseString + (morseBuffer.length() > 0 ? " " + morseBuffer : ""), decodedText, activeRxNotify());
                 break;
 
             case ButtonEvent::DashPress:
                 composing = true;
                 morseBuffer += '-';
                 lastSymbolMs = millis();
-                displayComposing(fullMorseString + (morseBuffer.length() > 0 ? " " + morseBuffer : ""), decodedText);
+                displayComposing(fullMorseString + (morseBuffer.length() > 0 ? " " + morseBuffer : ""), decodedText, activeRxNotify());
                 break;
 
             case ButtonEvent::SendPress:
@@ -201,7 +213,7 @@ void loop() {
     // ---- Auto-decode character after timeout --------------------------------
     if (composing && morseBuffer.length() > 0 && (millis() - lastSymbolMs) >= CHAR_TIMEOUT_MS) {
         commitCurrentChar();
-        displayComposing(fullMorseString + (morseBuffer.length() > 0 ? " " + morseBuffer : ""), decodedText);
+        displayComposing(fullMorseString + (morseBuffer.length() > 0 ? " " + morseBuffer : ""), decodedText, activeRxNotify());
     }
 
     // ---- Check for incoming packets -----------------------------------------
@@ -220,7 +232,14 @@ void loop() {
             uiSetLastRssi(rssi);
 
             // Display and vibrate
-            displayReceiving(rxPkt.text, rssi);
+            if (composing) {
+                // Show as banner at bottom of composing screen instead of full-screen takeover
+                rxNotifyText = rxPkt.text;
+                rxNotifyMs   = millis();
+                displayComposing(fullMorseString + (morseBuffer.length() > 0 ? " " + morseBuffer : ""), decodedText, rxNotifyText);
+            } else {
+                displayReceiving(rxPkt.text, rssi);
+            }
             uiAddHistory("RX: " + rxPkt.text);
 
             // Regenerate morse from ASCII for vibration replay
