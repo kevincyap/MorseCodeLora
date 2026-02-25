@@ -20,7 +20,8 @@ void displaySetScreen(DisplayScreen screen);
 void displayIdle(const String &status, const String &lastMsg = "");
 
 // Composing screen: top = raw morse, bottom = decoded preview.
-void displayComposing(const String &morseInput, const String &decodedPreview);
+// Optional rxNotify shows a received-message banner at the screen bottom.
+void displayComposing(const String &morseInput, const String &decodedPreview, const String &rxNotify = "");
 
 // Sending screen: show send status.
 void displaySending(const String &status);
@@ -33,4 +34,10 @@ void displayDim(bool dim);
 
 // Show a simple one-line message (kept for boot/error use).
 void displayShowMessage(const String &text);
+
+// Menu screen: show a list with cursor indicator.
+void displayMenu(const char* const items[], uint8_t count, uint8_t cursor);
+
+// Page screen: title bar + scrollable content body.
+void displayPage(const String &title, const String &content);
 

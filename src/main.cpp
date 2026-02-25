@@ -10,6 +10,7 @@
 #include "deviceIdentity.h"
 #include "chordMappings.h"
 #include "powerHandler.h"
+#include "uiHandler.h"
 
 // ---- State ------------------------------------------------------------------
 static uint8_t localID = 0;
@@ -22,28 +23,12 @@ static String fullMorseString;  // all morse for the message (space-separated ch
 static unsigned long lastSymbolMs = 0;
 static bool composing = false;
 
-// Addressing
-static bool broadcastMode = true;
-static uint8_t targetID = BROADCAST_ADDR;
-
-// Message history
-static String messageHistory[MESSAGE_HISTORY_SIZE];
-static uint8_t historyCount = 0;
-static uint8_t historyViewIdx = 0;
-static bool viewingHistory = false;
+// RX notification shown on composing screen
+static String rxNotifyText;
+static unsigned long rxNotifyMs = 0;
+static const unsigned long RX_NOTIFY_DURATION_MS = 5000;
 
 // ---- Helpers ----------------------------------------------------------------
-
-static void addToHistory(const String &msg) {
-    if (historyCount < MESSAGE_HISTORY_SIZE) {
-        messageHistory[historyCount++] = msg;
-    } else {
-        for (uint8_t i = 1; i < MESSAGE_HISTORY_SIZE; ++i) {
-            messageHistory[i - 1] = messageHistory[i];
-        }
-        messageHistory[MESSAGE_HISTORY_SIZE - 1] = msg;
-    }
-}
 
 static void commitCurrentChar() {
     if (morseBuffer.length() == 0) return;
@@ -54,6 +39,13 @@ static void commitCurrentChar() {
         fullMorseString += morseBuffer;
     }
     morseBuffer = "";
+}
+
+// Return the active RX notification, or "" if expired.
+static String activeRxNotify() {
+    if (rxNotifyText.length() > 0 && (millis() - rxNotifyMs) < RX_NOTIFY_DURATION_MS)
+        return rxNotifyText;
+    return "";
 }
 
 static void prepareSerialMessage(const String &text) {
@@ -78,13 +70,13 @@ static void sendMessage() {
 
     Packet pkt;
     pkt.srcID  = localID;
-    pkt.dstID  = broadcastMode ? BROADCAST_ADDR : targetID;
+    pkt.dstID  = uiIsBroadcast() ? BROADCAST_ADDR : uiGetTargetID();
     pkt.seqNum = seqNum++;
-    pkt.flags  = broadcastMode ? PACKET_FLAG_BROADCAST : PACKET_FLAG_ACK_REQ;
+    pkt.flags  = uiIsBroadcast() ? PACKET_FLAG_BROADCAST : PACKET_FLAG_ACK_REQ;
     pkt.text   = decodedText;
 
     displaySending("Sending...");
-    TransmitStatus status = radioTransmitPacket(pkt, !broadcastMode, localID);
+    TransmitStatus status = radioTransmitPacket(pkt, !uiIsBroadcast(), localID);
 
     switch (status) {
         case TransmitStatus::Ok:
@@ -110,7 +102,7 @@ static void sendMessage() {
             break;
     }
 
-    addToHistory("TX: " + decodedText);
+    uiAddHistory("TX: " + decodedText);
     delay(800);
 
     // Reset compose state
@@ -118,7 +110,7 @@ static void sendMessage() {
     decodedText = "";
     fullMorseString = "";
     composing = false;
-    displayIdle("Ready", "Sent: " + pkt.text);
+    displayIdle("Ready", "TX: " + pkt.text);
 }
 
 static void handleBackspace() {
@@ -130,22 +122,7 @@ static void handleBackspace() {
         int lastSpace = fullMorseString.lastIndexOf(' ');
         fullMorseString = (lastSpace >= 0) ? fullMorseString.substring(0, lastSpace) : "";
     }
-    displayComposing(fullMorseString + (morseBuffer.length() > 0 ? " " + morseBuffer : ""), decodedText);
-}
-
-static void handleScrollHistory() {
-    if (historyCount == 0) {
-        displayIdle("No messages", "");
-        return;
-    }
-    if (!viewingHistory) {
-        viewingHistory = true;
-        historyViewIdx = historyCount - 1;
-    } else {
-        historyViewIdx = (historyViewIdx > 0) ? historyViewIdx - 1 : historyCount - 1;
-    }
-    displayIdle("History " + String(historyViewIdx + 1) + "/" + String(historyCount),
-                messageHistory[historyViewIdx] + (viewingHistory ? " <" : ""));
+    displayComposing(fullMorseString + (morseBuffer.length() > 0 ? " " + morseBuffer : ""), decodedText, activeRxNotify());
 }
 
 // ---- Setup & Loop -----------------------------------------------------------
@@ -159,6 +136,7 @@ void setup() {
     inputSetup();
     vibrationSetup();
     powerSetup();
+    uiSetup();
 
     localID = deviceGetID();
     Serial.printf("Device ID: 0x%02X  Name: %s\n", localID, deviceGetName().c_str());
@@ -187,63 +165,55 @@ void loop() {
     ButtonEvent evt = inputUpdate();
     vibrationUpdate();
 
-    // ---- Handle button/chord events -----------------------------------------
-    if (evt != ButtonEvent::None) {
-        // Exit history view on any press EXCEPT scroll chord
-        if (!(evt == ButtonEvent::Chord && inputLastChord() == ChordAction::ScrollHistory)) {
-            viewingHistory = false;
-        }
-    }
+    // ---- Let UI handler consume menu events first ---------------------------
+    ChordAction chord = (evt == ButtonEvent::Chord) ? inputLastChord() : ChordAction::None;
+    bool consumed = uiHandleInput(evt, chord);
 
-    switch (evt) {
-        case ButtonEvent::DotPress:
-            composing = true;
-            morseBuffer += '.';
-            lastSymbolMs = millis();
-            displayComposing(fullMorseString + (morseBuffer.length() > 0 ? " " + morseBuffer : ""), decodedText);
-            break;
+    // ---- Handle main-screen button/chord events -----------------------------
+    if (!consumed) {
+        switch (evt) {
+            case ButtonEvent::DotPress:
+                composing = true;
+                morseBuffer += '.';
+                lastSymbolMs = millis();
+                displayComposing(fullMorseString + (morseBuffer.length() > 0 ? " " + morseBuffer : ""), decodedText, activeRxNotify());
+                break;
 
-        case ButtonEvent::DashPress:
-            composing = true;
-            morseBuffer += '-';
-            lastSymbolMs = millis();
-            displayComposing(fullMorseString + (morseBuffer.length() > 0 ? " " + morseBuffer : ""), decodedText);
-            break;
+            case ButtonEvent::DashPress:
+                composing = true;
+                morseBuffer += '-';
+                lastSymbolMs = millis();
+                displayComposing(fullMorseString + (morseBuffer.length() > 0 ? " " + morseBuffer : ""), decodedText, activeRxNotify());
+                break;
 
-        case ButtonEvent::SendPress:
-            sendMessage();
-            break;
+            case ButtonEvent::SendPress:
+                sendMessage();
+                break;
 
-        case ButtonEvent::Chord: {
-            ChordAction action = inputLastChord();
-            switch (action) {
-                case ChordAction::Backspace:
-                    handleBackspace();
-                    break;
-                case ChordAction::ScrollHistory:
-                    handleScrollHistory();
-                    break;
-                case ChordAction::ToggleAddressing:
-                    broadcastMode = !broadcastMode;
-                    displayIdle(broadcastMode ? "Broadcast ON" : "Addr: " + String(targetID, HEX), "");
-                    break;
-                case ChordAction::ForceSleep:
-                    powerDeepSleep();
-                    break;
-                default:
-                    break;
+            case ButtonEvent::Chord: {
+                switch (chord) {
+                    case ChordAction::Select:
+                        // On main screen, Select chord acts as backspace
+                        handleBackspace();
+                        break;
+                    case ChordAction::ForceSleep:
+                        powerDeepSleep();
+                        break;
+                    default:
+                        break;
+                }
+                break;
             }
-            break;
-        }
 
-        default:
-            break;
+            default:
+                break;
+        }
     }
 
     // ---- Auto-decode character after timeout --------------------------------
     if (composing && morseBuffer.length() > 0 && (millis() - lastSymbolMs) >= CHAR_TIMEOUT_MS) {
         commitCurrentChar();
-        displayComposing(fullMorseString + (morseBuffer.length() > 0 ? " " + morseBuffer : ""), decodedText);
+        displayComposing(fullMorseString + (morseBuffer.length() > 0 ? " " + morseBuffer : ""), decodedText, activeRxNotify());
     }
 
     // ---- Check for incoming packets -----------------------------------------
@@ -257,14 +227,20 @@ void loop() {
                 radioTransmitPacket(ack);
             }
 
-            // Track last sender as default target for addressed mode
-            if (rxPkt.srcID != BROADCAST_ADDR) {
-                targetID = rxPkt.srcID;
-            }
+            // Track sender for address page
+            uiTrackDevice(rxPkt.srcID);
+            uiSetLastRssi(rssi);
 
             // Display and vibrate
-            displayReceiving(rxPkt.text, rssi);
-            addToHistory("RX: " + rxPkt.text);
+            if (composing) {
+                // Show as banner at bottom of composing screen instead of full-screen takeover
+                rxNotifyText = rxPkt.text;
+                rxNotifyMs   = millis();
+                displayComposing(fullMorseString + (morseBuffer.length() > 0 ? " " + morseBuffer : ""), decodedText, rxNotifyText);
+            } else {
+                displayReceiving(rxPkt.text, rssi);
+            }
+            uiAddHistory("RX: " + rxPkt.text);
 
             // Regenerate morse from ASCII for vibration replay
             String morsePattern;

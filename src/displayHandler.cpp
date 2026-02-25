@@ -44,7 +44,7 @@ void displayIdle(const String &status, const String &lastMsg) {
 	display.display();
 }
 
-void displayComposing(const String &morseInput, const String &decodedPreview) {
+void displayComposing(const String &morseInput, const String &decodedPreview, const String &rxNotify) {
 	display.clear();
 	display.setFont(ArialMT_Plain_10);
 	display.setTextAlignment(TEXT_ALIGN_LEFT);
@@ -53,9 +53,15 @@ void displayComposing(const String &morseInput, const String &decodedPreview) {
 	display.drawString(0, 0, "Morse:");
 	display.drawString(0, 12, morseInput);
 
-	// Bottom: decoded text preview
+	// Middle: decoded text preview
 	display.drawHorizontalLine(0, 30, 128);
 	display.drawString(0, 34, decodedPreview);
+
+	// Bottom: RX notification banner (if any)
+	if (rxNotify.length() > 0) {
+		display.drawHorizontalLine(0, 50, 128);
+		display.drawString(0, 52, "RX:" + rxNotify);
+	}
 
 	display.display();
 }
@@ -90,5 +96,45 @@ void displayShowMessage(const String &text) {
 	display.setFont(ArialMT_Plain_10);
 	display.setTextAlignment(TEXT_ALIGN_CENTER);
 	display.drawString(64, 26, text);
+	display.display();
+}
+
+void displayMenu(const char* const items[], uint8_t count, uint8_t cursor) {
+	display.clear();
+	display.setFont(ArialMT_Plain_10);
+	display.setTextAlignment(TEXT_ALIGN_LEFT);
+
+	// Title bar
+	display.drawString(0, 0, "MENU");
+	display.drawHorizontalLine(0, 12, 128);
+
+	// List items with cursor
+	for (uint8_t i = 0; i < count && i < 4; ++i) {
+		int16_t y = 15 + i * 13;
+		String prefix = (i == cursor) ? "> " : "  ";
+		display.drawString(0, y, prefix + String(items[i]));
+	}
+	display.display();
+}
+
+void displayPage(const String &title, const String &content) {
+	display.clear();
+	display.setFont(ArialMT_Plain_10);
+	display.setTextAlignment(TEXT_ALIGN_LEFT);
+
+	// Title bar
+	display.drawString(0, 0, title);
+	display.drawHorizontalLine(0, 12, 128);
+
+	// Content body — split by newlines, draw up to 4 lines
+	int16_t y = 15;
+	int start = 0;
+	for (int i = 0; i <= (int)content.length() && y < 64; ++i) {
+		if (i == (int)content.length() || content[i] == '\n') {
+			display.drawString(0, y, content.substring(start, i));
+			y += 13;
+			start = i + 1;
+		}
+	}
 	display.display();
 }

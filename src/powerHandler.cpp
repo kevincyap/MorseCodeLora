@@ -87,5 +87,14 @@ void powerDeepSleep() {
     // DIO1 (radio) wakes on HIGH (asserted when packet received)
     esp_sleep_enable_ext0_wakeup(static_cast<gpio_num_t>(DIO0), 1);
 
+    // Wait for all buttons to be released so held keys don't
+    // immediately trigger the EXT1 ANY_LOW wake source.
+    while (digitalRead(PIN_BTN_DOT) == LOW ||
+           digitalRead(PIN_BTN_DASH) == LOW ||
+           digitalRead(PIN_BTN_SEND) == LOW) {
+        delay(10);
+    }
+    delay(50);  // debounce settling
+
     esp_deep_sleep_start();
 }
